@@ -5,15 +5,17 @@ export function getSubtitleTrackUrl(jobId: string, languageCode: string) {
 // src/lib/api.ts
 // Centralized API functions for subtitle generation app
 
-export async function processVideo({ file, inputLanguage, targetLanguages }: {
+export async function processVideo({ file, inputLanguage, targetLanguages, asrModelSize }: {
   file: File,
   inputLanguage: string,
-  targetLanguages: string[]
+  targetLanguages: string[],
+  asrModelSize: string
 }) {
   const formData = new FormData();
   formData.append("video", file);
   formData.append("input_language", inputLanguage);
   targetLanguages.forEach(lang => formData.append("target_languages", lang));
+  formData.append("asr_model_size", asrModelSize);
   const response = await fetch("/api/pipeline/process", {
     method: "POST",
     body: formData,
@@ -43,4 +45,34 @@ export async function fetchProcessedVideoBlob(jobId: string) {
     throw new Error(`Failed to load processed video: ${errorText}`);
   }
   return response.blob();
+}
+
+// Interface for summary response
+export interface SummaryResponse {
+  summary_id: string;
+  job_id: string;
+  text_content: string;
+  language: string;
+}
+
+export interface SummariesResponse {
+  job_id: string;
+  summaries: SummaryResponse[];
+}
+
+// Fetch summaries for a specific job
+export async function fetchSummaries(jobId: string): Promise<SummariesResponse> {
+  const response = await fetch(`/api/downloads/summaries/${jobId}`, { 
+    method: "GET",
+    headers: {
+      "Content-Type": "application/json",
+    }
+  });
+  
+  if (!response.ok) {
+    const errorData = await response.json().catch(() => ({}));
+    throw new Error(errorData.detail || `Failed to fetch summaries: HTTP ${response.status}`);
+  }
+  
+  return response.json();
 }

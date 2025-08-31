@@ -4,9 +4,9 @@ import Navigation from "@/components/Navigation";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Download, ArrowLeft, Play, Loader2, Subtitles, AlertCircle } from "lucide-react";
+import { Download, ArrowLeft, Play, Loader2, Subtitles, AlertCircle, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { downloadProcessedVideo, fetchProcessedVideoBlob, getSubtitleTrackUrl } from "@/lib/api";
+import { downloadProcessedVideo, fetchProcessedVideoBlob, getSubtitleTrackUrl, fetchSummaries, SummariesResponse, SummaryResponse } from "@/lib/api";
 
 interface ProcessingResult {
   job_id?: string;
@@ -36,6 +36,10 @@ const App = () => {
   const [subtitleText, setSubtitleText] = useState<string>("");
   const [isLoadingSubtitle, setIsLoadingSubtitle] = useState(false);
   const [videoError, setVideoError] = useState<string | null>(null);
+  const [summaries, setSummaries] = useState<SummaryResponse[]>([]);
+  const [selectedSummaryLanguage, setSelectedSummaryLanguage] = useState<string>("");
+  const [isLoadingSummaries, setIsLoadingSummaries] = useState(false);
+  const [summariesError, setSummariesError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const { toast } = useToast();
 
@@ -43,7 +47,7 @@ const App = () => {
   const targetLanguages = extractedResult.target_languages || extractedResult.targetLanguages || [];
   const inputLanguage = extractedResult.input_language || extractedResult.inputLanguage || "";
   const actualJobId = jobId || extractedResult.job_id || "";
-  const videoSummary = extractedResult.summary || "Moroccan and French authorities conducted a joint anti-terrorism operation, arresting several suspects planning attacks in both countries. Among them, a Moroccan woman in France was detained for attempting to target a church. The operation, supported by French intelligence, underscores strong bilateral cooperation against terrorism."
+  
   const languages = [
     { code: "english", name: "English" },
     { code: "arabic", name: "Arabic" },
@@ -58,6 +62,39 @@ const App = () => {
     { code: "ko", name: "Korean" }
   ];
   const getLanguageName = (code: string) => languages.find(lang => lang.code === code)?.name || code;
+
+  const loadSummaries = async () => {
+    if (!actualJobId) return;
+    setIsLoadingSummaries(true);
+    setSummariesError(null);
+    try {
+      const summariesResponse = await fetchSummaries(actualJobId);
+      setSummaries(summariesResponse.summaries);
+      
+      // Set default selected summary language to the first available or input language
+      if (summariesResponse.summaries.length > 0) {
+        const defaultSummaryLang = summariesResponse.summaries.find(s => s.language === inputLanguage)?.language || 
+                                   summariesResponse.summaries[0].language;
+        setSelectedSummaryLanguage(defaultSummaryLang);
+      }
+      
+      toast({
+        title: "Summaries Loaded",
+        description: `Found ${summariesResponse.summaries.length} summary(ies) for this video.`,
+      });
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : "Failed to load summaries";
+      setSummariesError(errorMessage);
+      console.error("Error loading summaries:", error);
+      toast({
+        title: "Failed to Load Summaries",
+        description: errorMessage,
+        variant: "destructive"
+      });
+    } finally {
+      setIsLoadingSummaries(false);
+    }
+  };
 
   const loadProcessedVideo = async () => {
     if (!actualJobId || processedVideoBlob) return;
@@ -171,6 +208,13 @@ const App = () => {
     };
   }, [processedVideoBlob]);
 
+  // Load summaries when component mounts
+  useEffect(() => {
+    if (actualJobId) {
+      loadSummaries();
+    }
+  }, [actualJobId]);
+
   const handleDownload = async () => {
     if (!actualJobId) {
       toast({
@@ -266,12 +310,131 @@ const App = () => {
           <div className="mb-8">
             <Card className="shadow-medium">
               <CardHeader>
-                <CardTitle>Video Content Summary</CardTitle>
+                <CardTitle className="flex items-center">
+                  <FileText className="h-5 w-5 mr-2" />
+                  Video Content Summary
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-base text-muted-foreground whitespace-pre-line">
-                  {videoSummary}
-                </div>
+                {isLoadingSummaries ? (
+                  <div className="flex items-center justify-center py-8">
+                    <Loader2 className="h-8 w-8 animate-spin mr-3" />
+                    <span className="text-muted-foreground">Loading summaries...</span>
+                  </div>
+                ) : summariesError ? (
+                  <div className="text-center py-8">
+                    <AlertCircle className="h-12 w-12 text-destructive mx-auto mb-4" />
+                    <p className="text-destructive font-medium mb-2">Failed to Load Summaries</p>
+                    <p className="text-sm text-muted-foreground mb-4">{summariesError}</p>
+                    <Button 
+                      variant="outline" 
+                      size="sm"
+                      onClick={loadSummaries}
+                    >
+                      Try Again
+                    </Button>
+                  </div>
+                ) : summaries.length > 0 ? (
+                  <div className="space-y-4">
+                    {/* Language selector buttons - show for all summaries */}
+                    <div className="space-y-3">
+                      <label className="text-sm font-medium">
+                        {summaries.length > 1 ? "Available Summary Languages:" : "Summary Language:"}
+                      </label>
+                      <div className="flex flex-wrap gap-2">
+                        {summaries.map((summary) => (
+                          <Button
+                            key={summary.language}
+                            variant={selectedSummaryLanguage === summary.language ? "default" : "outline"}
+                            size="sm"
+                            onClick={() => setSelectedSummaryLanguage(summary.language)}
+                            className="transition-all duration-200"
+                          >
+                            {getLanguageName(summary.language)}
+                            {summaries.length === 1 && " (Only Available)"}
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Dropdown selector for summaries (alternative to buttons) - only show if multiple */}
+                    {summaries.length > 1 && (
+                      <div className="flex items-center space-x-3 pt-2 border-t border-border">
+                        <label className="text-sm font-medium">Or select from dropdown:</label>
+                        <Select value={selectedSummaryLanguage} onValueChange={setSelectedSummaryLanguage}>
+                          <SelectTrigger className="w-48">
+                            <SelectValue placeholder="Select language" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {summaries.map((summary) => (
+                              <SelectItem key={summary.language} value={summary.language}>
+                                {getLanguageName(summary.language)}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    )}
+                    
+                    {/* Display selected summary */}
+                    {(() => {
+                      const selectedSummary = summaries.find(s => s.language === selectedSummaryLanguage);
+                      return selectedSummary ? (
+                        <div className="space-y-2">
+                          <div className="text-sm font-medium text-primary">
+                            Summary in {getLanguageName(selectedSummaryLanguage)}:
+                          </div>
+                          <div className="text-base text-foreground whitespace-pre-line p-4 bg-secondary/30 rounded-lg">
+                            {selectedSummary.text_content}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="text-muted-foreground italic">
+                          No summary available for selected language.
+                        </div>
+                      );
+                    })()}
+                  </div>
+                ) : (
+                  <div className="text-center py-8">
+                    <FileText className="h-12 w-12 text-muted-foreground mx-auto mb-4 opacity-50" />
+                    <p className="text-muted-foreground">No summaries available for this video.</p>
+                    <p className="text-sm text-muted-foreground mt-2">
+                      Summaries may still be processing or there was an issue generating them.
+                    </p>
+                    
+                    {/* Demo buttons for testing */}
+                    <div className="mt-4 p-4 bg-yellow-50 border border-yellow-200 rounded-lg">
+                      <p className="text-sm font-medium text-yellow-800 mb-2">Demo Mode - Test Summary Language Switching:</p>
+                      <div className="flex justify-center gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSummaries([
+                              { summary_id: "demo1", job_id: "demo", text_content: "This is a sample summary in English. The video discusses technology trends and innovations in the industry.", language: "english" },
+                              { summary_id: "demo2", job_id: "demo", text_content: "هذا ملخص تجريبي باللغة العربية. يناقش الفيديو الاتجاهات التكنولوجية والابتكارات في الصناعة.", language: "arabic" },
+                              { summary_id: "demo3", job_id: "demo", text_content: "Ceci est un résumé de démonstration en français. La vidéo traite des tendances technologiques et des innovations dans l'industrie.", language: "french" }
+                            ]);
+                            setSelectedSummaryLanguage("english");
+                          }}
+                        >
+                          Load Demo Summaries
+                        </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setSummaries([]);
+                            setSelectedSummaryLanguage("");
+                          }}
+                        >
+                          Clear Demo
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
 
                 {/* Subtitle Content Section */}
                 {showProcessedVideo && processedVideoBlob && (
@@ -486,6 +649,68 @@ const App = () => {
 
             {/* Controls */}
             <div className="space-y-6">
+              <Card className="shadow-medium">
+                <CardHeader>
+                  <CardTitle>Summary & Content</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  {summaries.length > 0 ? (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium">Available Summaries:</p>
+                      <div className="flex flex-wrap gap-2">
+                        {summaries.map((summary) => (
+                          <span 
+                            key={summary.language}
+                            className={`inline-block px-3 py-1 rounded-full text-sm cursor-pointer transition-colors ${
+                              selectedSummaryLanguage === summary.language 
+                                ? "bg-primary text-primary-foreground" 
+                                : "bg-secondary text-secondary-foreground hover:bg-secondary/80"
+                            }`}
+                            onClick={() => setSelectedSummaryLanguage(summary.language)}
+                          >
+                            {getLanguageName(summary.language)}
+                          </span>
+                        ))}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <p className="text-sm font-medium text-muted-foreground">Summaries:</p>
+                      <div className="flex items-center space-x-2">
+                        {isLoadingSummaries ? (
+                          <>
+                            <Loader2 className="h-4 w-4 animate-spin" />
+                            <span className="text-sm text-muted-foreground">Loading...</span>
+                          </>
+                        ) : summariesError ? (
+                          <>
+                            <AlertCircle className="h-4 w-4 text-destructive" />
+                            <span className="text-sm text-destructive">Failed to load</span>
+                            <Button 
+                              variant="outline" 
+                              size="sm"
+                              onClick={loadSummaries}
+                            >
+                              Retry
+                            </Button>
+                          </>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">No summaries available</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  <div className="pt-2 border-t border-border">
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p>• Summaries are generated for each target language</p>
+                      <p>• Click on language tags above to switch summaries</p>
+                      <p>• Content is automatically translated and summarized</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               <Card className="shadow-medium">
                 <CardHeader>
                   <CardTitle>Subtitle Languages</CardTitle>

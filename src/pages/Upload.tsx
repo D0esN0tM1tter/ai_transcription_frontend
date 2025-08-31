@@ -14,6 +14,7 @@ const Upload = () => {
   const [file, setFile] = useState<File | null>(null);
   const [inputLanguage, setInputLanguage] = useState("");
   const [targetLanguages, setTargetLanguages] = useState<string[]>([]);
+  const [asrModelSize, setAsrModelSize] = useState("small");
   const [isProcessing, setIsProcessing] = useState(false);
   const navigate = useNavigate();
   const { toast } = useToast();
@@ -23,6 +24,34 @@ const Upload = () => {
     { code: "arabic", name: "Arabic" }, 
     { code: "spanish", name: "Spanish" },
     { code: "french", name: "French" },
+  ];
+
+  const modelSizes = [
+    { 
+      code: "tiny", 
+      name: "Tiny", 
+      description: "Fastest processing, basic accuracy"
+    },
+    { 
+      code: "base", 
+      name: "Base", 
+      description: "Good balance of speed and accuracy"
+    },
+    { 
+      code: "small", 
+      name: "Small", 
+      description: "Better accuracy, moderate speed"
+    },
+    { 
+      code: "medium", 
+      name: "Medium", 
+      description: "High accuracy, slower processing"
+    },
+    { 
+      code: "large", 
+      name: "Large", 
+      description: "Highest accuracy, slowest processing"
+    },
   ];
 
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -43,17 +72,17 @@ const Upload = () => {
   };
 
   const handleSubmit = async () => {
-    if (!file || !inputLanguage || targetLanguages.length === 0) {
+    if (!file || !inputLanguage || targetLanguages.length === 0 || !asrModelSize) {
       toast({
         title: "Missing Information",
-        description: "Please upload a video, select input language, and choose target languages.",
+        description: "Please upload a video, select input language, choose target languages, and select a model size.",
         variant: "destructive"
       });
       return;
     }
     setIsProcessing(true);
     try {
-      const result = await processVideo({ file, inputLanguage, targetLanguages });
+      const result = await processVideo({ file, inputLanguage, targetLanguages, asrModelSize });
       toast({
         title: "Processing Complete",
         description: "Your video has been processed successfully!",
@@ -80,7 +109,7 @@ const Upload = () => {
   const steps = [
     { icon: FileVideo, title: "Upload", active: !!file, gradient: "from-blue-500 to-cyan-500" },
     { icon: Languages, title: "Languages", active: inputLanguage && targetLanguages.length > 0, gradient: "from-purple-500 to-pink-500" },
-    { icon: Download, title: "Process", active: false, gradient: "from-emerald-500 to-teal-500" }
+    { icon: Download, title: "Process", active: asrModelSize !== "", gradient: "from-emerald-500 to-teal-500" }
   ];
 
   return (
@@ -253,11 +282,58 @@ const Upload = () => {
                 )}
               </div>
 
+              {/* Model Size Selection */}
+              <div className="space-y-4">
+                <Label className="text-lg font-semibold text-gray-900 flex items-center">
+                  <div className="mr-2 h-5 w-5 text-emerald-600 flex items-center justify-center">
+                    <svg className="w-5 h-5" fill="currentColor" viewBox="0 0 20 20">
+                      <path d="M13 6a3 3 0 11-6 0 3 3 0 016 0zM18 8a2 2 0 11-4 0 2 2 0 014 0zM14 15a4 4 0 00-8 0v3h8v-3z"/>
+                    </svg>
+                  </div>
+                  ASR Model Size
+                </Label>
+                <Select value={asrModelSize} onValueChange={setAsrModelSize}>
+                  <SelectTrigger className="h-12 text-base border-2 hover:border-emerald-300 transition-colors">
+                    <SelectValue placeholder="Select model size for transcription accuracy" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {modelSizes.map((model) => (
+                      <SelectItem key={model.code} value={model.code} className="text-base py-4">
+                        <div className="flex items-center space-x-3">
+                          <div className="w-2 h-2 bg-emerald-500 rounded-full"></div>
+                          <div>
+                            <div className="font-medium">{model.name}</div>
+                            <div className="text-xs text-muted-foreground">{model.description}</div>
+                          </div>
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                
+                <div className="bg-emerald-50 p-4 rounded-xl border border-emerald-200">
+                  <div className="flex items-start space-x-3">
+                    <div className="w-2 h-2 bg-emerald-500 rounded-full mt-2"></div>
+                    <div>
+                      <p className="text-sm font-medium text-emerald-800 mb-1">
+                        Selected: {modelSizes.find(m => m.code === asrModelSize)?.name} Model
+                      </p>
+                      <p className="text-xs text-emerald-700">
+                        {modelSizes.find(m => m.code === asrModelSize)?.description}
+                      </p>
+                      <div className="mt-2 text-xs text-emerald-600">
+                        <p><strong>Tip:</strong> For most content, Small model provides the best balance. Use Large for professional content requiring highest accuracy.</p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               {/* Submit Button */}
               <div className="pt-4">
                 <Button 
                   onClick={handleSubmit} 
-                  disabled={!file || !inputLanguage || targetLanguages.length === 0 || isProcessing}
+                  disabled={!file || !inputLanguage || targetLanguages.length === 0 || !asrModelSize || isProcessing}
                   className="w-full h-14 text-lg font-semibold bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 shadow-xl hover:shadow-2xl transform hover:-translate-y-1 transition-all duration-300 disabled:transform-none disabled:shadow-lg"
                   size="lg"
                 >
